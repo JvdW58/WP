@@ -1,0 +1,21 @@
+name: Window price checker
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm init -y && npm i playwright
+      - run: npx playwright install --with-deps chromium
+      - name: Inspect configurators
+        run: node scripts/window-price-checker.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: window-price-results
+          path: results
