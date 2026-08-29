@@ -1,6 +1,9 @@
 name: Window price checker
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - chatgpt-window-price-checker
 permissions:
   contents: read
 jobs:
