@@ -7,22 +7,26 @@ const candidates=[
  {key:'energy-classic',brand:'Drutex',profile:'Iglo Energy Classic'},
  {key:'edge',brand:'Drutex',profile:'Iglo Edge'}
 ];
-async function clearCookie(page){await page.evaluate(()=>{document.querySelector('#cmpbox')?.remove();document.querySelector('#cmpbox2')?.remove();});}
-async function clickItem(page,txt){const s=page.locator('span.item-name:visible',{hasText:txt}).last();await s.locator('xpath=ancestor::div[contains(@class,"step-item")][1]').click({timeout:6000,force:true});await sleep(750)}
-async function waitStable(page){let prev='';for(let i=0;i<8;i++){await sleep(700);const t=await page.evaluate(()=>(document.body?.innerText.match(/Aktionspreis:\s*([0-9.,]+)\s*€/s)||[])[1]||'');if(t&&t===prev)return t;prev=t;}return prev;}
-async function selectHidden(page){return await page.evaluate(()=>{const panels=[...document.querySelectorAll('app-panel-step')].filter(x=>x.offsetParent!==null);const p=panels.find(x=>(x.textContent||'').includes('Verdeckt liegender Beschlag'));if(!p)return {available:false,selected:false};const items=[...p.querySelectorAll('.step-item')].filter(x=>x.offsetParent!==null);const y=items.find(x=>(x.querySelector('.item-name')?.textContent||x.textContent||'').trim()==='Ja');if(y){y.click();return {available:true,selected:true};}return {available:true,selected:false};});}
+async function accept(page){for(const t of ['Alle akzeptieren','Akzeptieren']){try{const x=page.getByText(t,{exact:false}).first();if(await x.count())await x.click({timeout:1200,force:true})}catch{}}}
+async function waitPrice(page){let p='';for(let i=0;i<8;i++){await sleep(650);const q=await page.evaluate(()=>(document.body?.innerText.match(/Aktionspreis:\s*([0-9.,]+)\s*€/s)||[])[1]||'');if(q&&q===p)return q;p=q;}return p;}
+async function selectHidden(page){try{await page.getByText('Zusätze',{exact:true}).first().click({force:true});await sleep(500);const panels=page.locator('app-panel-step').filter({hasText:'Verdeckt liegender Beschlag'});if(!await panels.count())return {available:false,selected:false};const panel=panels.last();const yes=panel.getByText('Ja',{exact:true}).last();if(await yes.count()){await yes.click({force:true});await sleep(900);return {available:true,selected:true};}return {available:true,selected:false};}catch(e){return {available:false,selected:false,error:String(e)}}}
 (async()=>{const browser=await chromium.launch({headless:true,channel:'chrome'});const out={};
 for(const c of candidates){const page=await browser.newPage({locale:'de-DE',viewport:{width:1440,height:1000}});try{
- await page.goto(c.url||'https://www.fensterblick.de/fenster-konfigurator.html',{waitUntil:'domcontentloaded',timeout:35000});await sleep(2200);await clearCookie(page);
- if(!c.url){await page.getByText(c.brand,{exact:true}).filter({visible:true}).last().click({force:true,timeout:5000}).catch(async()=>{await page.getByText(c.brand,{exact:true}).last().click({force:true,timeout:5000});});await sleep(750);await clickItem(page,c.profile);}else{await clickItem(page,c.profile);}
- await page.getByText('Typ',{exact:true}).first().click({force:true});await sleep(300);await clickItem(page,'Dreh-Kipp links');
- await page.getByText('Maße',{exact:true}).first().click({force:true});await sleep(300);const nums=page.locator('input[type=number]:visible');
- await nums.nth(0).fill('1055');await nums.nth(0).dispatchEvent('change');await nums.nth(0).blur();await sleep(1200);
+ await page.goto(c.url||'https://www.fensterblick.de/fenster-konfigurator.html',{waitUntil:'domcontentloaded',timeout:35000});await sleep(3200);await accept(page);await sleep(600);
+ if(!c.url){await page.getByText(c.brand,{exact:true}).last().click({timeout:5000,force:true});await sleep(900);}
+ await page.getByText(c.profile,{exact:false}).last().click({timeout:6000,force:true});await sleep(1100);
+ await page.getByText('Typ',{exact:true}).first().click({force:true});await sleep(450);
+ await page.getByText('Dreh-Kipp links',{exact:false}).last().click({timeout:6000,force:true});await sleep(1100);
+ await page.getByText('Maße',{exact:true}).first().click({force:true});await sleep(450);
+ const nums=page.locator('input[type=number]');
+ await nums.nth(0).fill('1055');await nums.nth(0).dispatchEvent('change');await nums.nth(0).blur();await sleep(1000);
  await nums.nth(1).fill('1175');await nums.nth(1).dispatchEvent('change');await nums.nth(1).blur();await sleep(1500);
- await page.getByText('Glas',{exact:true}).first().click({force:true});await sleep(300);await clickItem(page,'3-fach Verglasung (warme Kante)');await waitStable(page);
- await page.getByText('Zusätze',{exact:true}).first().click({force:true});await sleep(400);const hidden=await selectHidden(page);await waitStable(page);
+ await page.getByText('Glas',{exact:true}).first().click({force:true});await sleep(450);
+ await page.getByText('3-fach Verglasung (warme Kante)',{exact:false}).last().click({timeout:6000,force:true});await waitPrice(page);
+ const hidden=await selectHidden(page);await waitPrice(page);
  const summary=await page.evaluate(()=>({text:(document.body?.innerText.match(/Ihre Konfiguration:[\s\S]*?In meinen Warenkorb/)||[''])[0]}));
- let cart=null;try{await page.getByText('In meinen Warenkorb',{exact:false}).first().click({force:true});await sleep(2200);if(await page.locator('#cart-shipping-country').count()){await page.evaluate(()=>{const s=document.querySelector('#cart-shipping-country');if(s){s.value='150';s.dispatchEvent(new Event('change',{bubbles:true}));}});await sleep(1600);}if(await page.locator('#cart-shipping-module').count()){await page.evaluate(()=>{const s=document.querySelector('#cart-shipping-module');if(s){s.value='flat_flat';s.dispatchEvent(new Event('change',{bubbles:true}));}});await sleep(1800);}cart=await page.evaluate(()=>({text:(document.body?.innerText||'').slice(0,35000),country:document.querySelector('#cart-shipping-country')?.value||null,module:document.querySelector('#cart-shipping-module')?.value||null,url:location.href}));}catch(e){cart={error:String(e),url:page.url()};}
- out[c.key]={candidate:c,hidden,summary,cart};
- }catch(e){out[c.key]={candidate:c,error:String(e),url:page.url(),text:(await page.locator('body').innerText().catch(()=>'' )).slice(0,12000)}}await page.close();}
+ const ok=/Dreh-Kipp links/.test(summary.text)&&/1055 mm x 1175 mm/.test(summary.text)&&/3-fach Verglasung \(warme Kante\)/.test(summary.text)&&summary.text.includes(c.profile);
+ let cart=null;if(ok){try{await page.getByText('In meinen Warenkorb',{exact:false}).first().click({force:true});await sleep(2500);await page.evaluate(()=>{const s=document.querySelector('#cart-shipping-country');if(s){s.value='150';s.dispatchEvent(new Event('change',{bubbles:true}));}});await sleep(1600);await page.evaluate(()=>{const s=document.querySelector('#cart-shipping-module');if(s){s.value='flat_flat';s.dispatchEvent(new Event('change',{bubbles:true}));}});await sleep(2000);cart=await page.evaluate(()=>({text:(document.body?.innerText||'').slice(0,42000),country:document.querySelector('#cart-shipping-country')?.value||null,module:document.querySelector('#cart-shipping-module')?.value||null,url:location.href}));}catch(e){cart={error:String(e),url:page.url()};}}
+ out[c.key]={candidate:c,hidden,ok,summary,cart};
+ }catch(e){out[c.key]={candidate:c,error:String(e),url:page.url(),text:(await page.locator('body').innerText().catch(()=>'' )).slice(0,14000)}}await page.close();}
 fs.writeFileSync('results/batch-de.json',JSON.stringify(out,null,2));await browser.close();})();
