@@ -16,14 +16,15 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
  await page.getByText('Zusätze',{exact:true}).first().click(); await sleep(350);
  const hiddenPanel=page.locator('app-panel-step',{hasText:'Verdeckt liegender Beschlag'}).first();
  const yes=hiddenPanel.locator('.step-item').filter({hasText:/^\s*Ja\s*$/}).first();
- if(await yes.count()) { await yes.click(); await sleep(800); }
- const configured=await page.evaluate(()=>({summary:(document.body?.innerText.match(/Ihre Konfiguration:[\s\S]*?In meinen Warenkorb/)||[''])[0],url:location.href}));
+ let hiddenSelected=false;
+ if(await yes.count()) { await yes.click(); hiddenSelected=true; await sleep(800); }
+ const configured=await page.evaluate((hiddenSelected)=>({summary:(document.body?.innerText.match(/Ihre Konfiguration:[\s\S]*?In meinen Warenkorb/)||[''])[0],url:location.href,hiddenSelected}),hiddenSelected);
  fs.writeFileSync('results/configured.json',JSON.stringify(configured,null,2));
  try {
-   await page.getByText('In meinen Warenkorb',{exact:false}).first().click(); await sleep(3000);
-   await page.selectOption('#cart-shipping-country','150'); await sleep(1800);
-   if(await page.locator('#cart-shipping-module').count()) { await page.selectOption('#cart-shipping-module','flat_flat'); await sleep(2200); }
-   const cart=await page.evaluate(()=>({url:location.href,text:(document.body?.innerText||'').slice(0,60000),country:document.querySelector('#cart-shipping-country')?.value||null,module:document.querySelector('#cart-shipping-module')?.value||null,inputs:[...document.querySelectorAll('input,select,button')].map(x=>({tag:x.tagName,type:x.type||'',name:x.name||'',id:x.id||'',value:x.value||'',placeholder:x.placeholder||'',text:(x.innerText||x.textContent||'').trim().slice(0,160),outer:x.outerHTML.slice(0,900)})).filter(x=>/plz|post|zip|land|country|versand|shipping|liefer|adresse|address|weiter|checkout|kasse/i.test(JSON.stringify(x))).slice(0,300)}));
+   await page.getByText('In meinen Warenkorb',{exact:false}).first().click(); await sleep(2500);
+   await page.evaluate(()=>{const s=document.querySelector('#cart-shipping-country'); if(s){s.value='150';s.dispatchEvent(new Event('change',{bubbles:true}));}}); await sleep(1800);
+   await page.evaluate(()=>{const s=document.querySelector('#cart-shipping-module'); if(s){s.value='flat_flat';s.dispatchEvent(new Event('change',{bubbles:true}));}}); await sleep(2200);
+   const cart=await page.evaluate(()=>({url:location.href,text:(document.body?.innerText||'').slice(0,60000),country:document.querySelector('#cart-shipping-country')?.value||null,module:document.querySelector('#cart-shipping-module')?.value||null}));
    fs.writeFileSync('results/cart-nl-delivery.json',JSON.stringify(cart,null,2));
  } catch(e) { fs.writeFileSync('results/cart-error.txt',String(e)+'\nURL='+page.url()); }
  await browser.close();
