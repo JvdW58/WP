@@ -1,51 +1,33 @@
 const { chromium } = require('playwright');
-const fs = require('fs');
-fs.mkdirSync('results', { recursive: true });
+const fs = require('fs'); fs.mkdirSync('results',{recursive:true});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 (async()=>{
-  const browser = await chromium.launch({headless:true});
-  const page = await browser.newPage({locale:'de-DE',viewport:{width:1440,height:1000}});
-  const api=[];
-  page.on('request', r=>{
-    const u=r.url();
-    if (u.includes('api.configurator.fensterblick.de')) api.push({kind:'request',method:r.method(),url:u,postData:r.postData()||null,headers:r.headers()});
-  });
-  page.on('response', async r=>{
-    const u=r.url();
-    if (u.includes('api.configurator.fensterblick.de')) {
-      let body=null; try { body=(await r.text()).slice(0,200000); } catch{}
-      api.push({kind:'response',status:r.status(),url:u,body});
-    }
-  });
-  await page.goto('https://www.fensterblick.de/fenster-konfigurator.html?profile=205',{waitUntil:'domcontentloaded',timeout:45000});
-  await page.waitForTimeout(4000);
-  for (const txt of ['Alle akzeptieren','Akzeptieren','Accept all']) {
-    const b=page.getByText(txt,{exact:false}).first();
-    if (await b.count()) { try { await b.click({timeout:1000}); } catch{} }
-  }
-  await page.waitForTimeout(1000);
-  try {
-    const md=page.getByText('IDEAL Neo MD 76mm Cube',{exact:false}).last();
-    if(await md.count()) { await md.click(); await page.waitForTimeout(1500); }
-  } catch{}
-
-  async function dump(tab){
-    try { await page.getByText(tab,{exact:true}).first().click({timeout:5000}); await page.waitForTimeout(1200); } catch{}
-    return await page.evaluate((tab)=>({
-      tab,
-      text:document.body.innerText.slice(0,50000),
-      controls:[...document.querySelectorAll('input,select,button,label,[role=button],a')].map(x=>({
-        tag:x.tagName,type:x.type||'',name:x.name||'',id:x.id||'',value:x.value||'',checked:!!x.checked,
-        text:(x.innerText||x.textContent||'').trim().replace(/\s+/g,' ').slice(0,220),
-        cls:String(x.className||''),html:x.outerHTML.slice(0,1400)
-      })).filter(x=>/breit|width|höhe|height|maß|mas|dreh|kipp|fest|glas|fach|ug|abstand|warm|maco|verdeckt|hidden|beschlag|scharn|flügel|fluegel|1-fl|typ|zusatz|extra/i.test(JSON.stringify(x))).slice(0,500)
-    }),tab);
-  }
-  const tabs={};
-  for (const t of ['Profil','Typ','Maße','Farbe','Glas','Zusätze']) tabs[t]=await dump(t);
-  const summary=await page.evaluate(()=>({
-    text:document.body.innerText.slice(0,50000),
-    html:document.querySelector('app-root')?.innerHTML.slice(0,200000)||''
-  }));
-  fs.writeFileSync('results/tab-inspect.json',JSON.stringify({tabs,summary,api},null,2));
-  await browser.close();
+ const browser=await chromium.launch({headless:true});
+ const page=await browser.newPage({locale:'de-DE',viewport:{width:1440,height:1000}});
+ const log=[]; page.on('request',r=>{if(r.url().includes('api.configurator.fensterblick.de'))log.push({kind:'req',method:r.method(),url:r.url(),postData:r.postData()})});
+ page.on('response',async r=>{if(r.url().includes('api.configurator.fensterblick.de')){let b='';try{b=(await r.text()).slice(0,60000)}catch{}log.push({kind:'res',status:r.status(),url:r.url(),body:b})}});
+ await page.goto('https://www.fensterblick.de/fenster-konfigurator.html?profile=205',{waitUntil:'domcontentloaded',timeout:45000}); await sleep(4000);
+ for(const t of ['Alle akzeptieren','Akzeptieren']){try{let x=page.getByText(t,{exact:false}).first();if(await x.count())await x.click({timeout:1000})}catch{}}
+ await sleep(800);
+ // Neo MD
+ try{await page.getByText('IDEAL Neo MD 76mm Cube',{exact:false}).last().click({timeout:5000});await sleep(1000)}catch(e){}
+ // type and opening
+ await page.getByText('Typ',{exact:true}).first().click(); await sleep(500);
+ await page.getByText('1-Flügel',{exact:false}).last().click(); await sleep(500);
+ await page.getByText('Dreh-Kipp links',{exact:false}).last().click(); await sleep(1000);
+ // dimensions
+ await page.getByText('Maße',{exact:true}).first().click(); await sleep(500);
+ const nums=page.locator('app-root input[type=number]');
+ await nums.nth(0).fill('1055'); await nums.nth(0).blur(); await sleep(800);
+ await nums.nth(1).fill('1175'); await nums.nth(1).blur(); await sleep(1200);
+ // glazing warm edge triple
+ await page.getByText('Glas',{exact:true}).first().click(); await sleep(500);
+ await page.getByText('3-fach Verglasung (warme Kante)',{exact:false}).last().click(); await sleep(1200);
+ // extras
+ await page.getByText('Zusätze',{exact:true}).first().click(); await sleep(1000);
+ const extras=await page.evaluate(()=>document.body.innerText.slice(0,50000));
+ const controls=await page.evaluate(()=>[...document.querySelectorAll('app-root input,app-root button,app-root label,app-root [role=button]')].map(x=>({tag:x.tagName,type:x.type||'',value:x.value||'',checked:!!x.checked,text:(x.innerText||x.textContent||'').trim().replace(/\s+/g,' ').slice(0,240),html:x.outerHTML.slice(0,1200)})).filter(x=>/maco|verdeckt|beschlag|scharn|sicherheit|griff|band|power/i.test(JSON.stringify(x))));
+ const summary=await page.evaluate(()=>document.body.innerText.match(/Ihre Konfiguration:[\s\S]*?In meinen Warenkorb/)?.[0]||document.body.innerText.slice(0,20000));
+ fs.writeFileSync('results/neo-config.json',JSON.stringify({extras,controls,summary,log},null,2));
+ await browser.close();
 })();
